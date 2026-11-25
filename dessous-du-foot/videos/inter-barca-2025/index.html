@@ -16,7 +16,7 @@
   svg#s { position: absolute; inset: 0; }
   svg#s .pop { transform-box: fill-box; transform-origin: center; }
   #broll { position: absolute; inset: 0; overflow: hidden; display: none; background: #000; }
-  #broll img { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; object-fit: cover; transform-origin: 50% 45%; }
+  #broll img { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; object-fit: cover; object-position: 50% 25%; transform-origin: 50% 35%; }
   #brshade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.6) 0%, rgba(0,0,0,.05) 35%, rgba(0,0,0,.1) 60%, rgba(0,0,0,.75) 100%); }
   #flash { position: absolute; inset: 0; opacity: 0; mix-blend-mode: screen; }
   #progress { position: absolute; top: 22px; left: 22px; height: 12px; background: #ffe066; }
@@ -60,7 +60,7 @@
 <div id="sb">
   <div class="row">
     <div class="tag" id="sbTag">ALLER</div>
-    <div class="team"><img class="logo" src="real/barca-logo.png" alt="">BARÇA</div>
+    <div class="team"><div class="sh bar"></div>BARÇA</div>
     <div class="score" id="sbScore">0 – 0</div>
     <div class="team">INTER<img class="logo" src="real/inter-logo.png" alt=""></div>
     <div class="clock" id="sbClock"></div>
@@ -189,14 +189,14 @@ function build() {
 
   // 1: first leg 3-3
   add(1, 'pop', T(540, 520, 'MATCH ALLER · BARCELONE', { size: 70, fill: YEL }), .1);
-  add(1, 'pop', IMG('real/barca-logo.png', 150, 620, 300, 360), .2);
+  add(1, 'draw', shield(160, 640, 280, 330, 'bar'), .2, .5);
   add(1, 'pop', IMG('real/inter-logo.png', 630, 620, 300, 360), .35);
   add(1, 'pop', T(540, 830, 'VS', { size: 80 }), .5);
   add(1, 'pop', T(540, 1240, '3 – 3', { size: 240, fill: YEL, stroke: DARK, sw: 14 }), W(1, 'trois'));
   add(1, 'pop', T(540, 1360, 'un match fou 🤯', { size: 60, font: 'Kalam' }), W(1, 'fou'));
 
   // 2: key moments of the first leg (Yamal photo behind from his name on)
-  BROLL.push({ scene: 2, from: W(2, 'Yamal'), to: 'end', src: 'real/yamal.jpg', z0: 1.2, z1: 1.05, dim: .45, credit: YAMAL_CREDIT });
+  BROLL.push({ scene: 2, from: W(2, 'Yamal'), to: 'end', src: 'real/yamal.jpg', z0: 1.06, z1: 1.0, dim: .45, credit: YAMAL_CREDIT });
   add(2, 'pop', goalCard(560, "1'", 'THURAM', 'l\'Inter marque après 30 secondes ⚡', IBLUE), W(2, 'Inter'));
   add(2, 'pop', goalCard(760, "24'", 'YAMAL ⭐', 'un but de génie, à 17 ans', '#e0457b'), W(2, 'Yamal'));
   add(2, 'pop', T(540, 1110, '+ 4 autres buts…', { size: 54, font: 'Kalam' }), W(2, 'incroyable'));
@@ -229,11 +229,10 @@ function build() {
   add(6, 'pop', T(540, 1330, 'SOMMER ARRÊTE TOUT 🧤', { size: 84, fill: YEL, stroke: DARK, sw: 12, rot: -3 }), W(6, 'Sommer'));
 
   // 7: Raphinha 87' (real photo)
-  BROLL.push({ scene: 7, from: W(7, 'Raphinha') - .1, to: 'end', src: 'real/raphinha.jpg', z0: 1.25, z1: 1.05, dim: .55, credit: 'Photo : Raphinha (2025), CC BY 4.0, Wikimedia Commons' });
+  BROLL.push({ scene: 7, from: W(7, 'Raphinha') - .1, to: 'end', src: 'real/raphinha.jpg', z0: 1.25, z1: 1.05, dim: .55, credit: 'Photo : Raphinha (2025), CC BY 4.0, via Wikimedia Commons' });
   add(7, 'pop', goalCard(620, "87'", 'RAPHINHA !', null, '#e0457b'), W(7, 'Raphinha'));
   add(7, 'pop', T(540, 960, 'LA FINALE EST LÀ 🏆', { size: 88, fill: GREEN, rot: -3 }), W(7, 'finale'));
   // 8: Acerbi 90+3' (real photo)
-  BROLL.push({ scene: 8, from: W(8, 'Acerbi') - .1, to: 'end', src: 'real/acerbi.jpg', z0: 1.0, z1: 1.2, dim: .5, credit: 'Photo : Vincenzo.togni, CC BY-SA 4.0, Wikimedia Commons' });
   add(8, 'pop', goalCard(620, "90+3'", 'ACERBI', 'défenseur central', IBLUE), W(8, 'Acerbi'));
   add(8, 'pop', T(540, 960, '37 ANS 😱', { size: 110, fill: RED, rot: -4 }), W(8, 'trente'));
 
