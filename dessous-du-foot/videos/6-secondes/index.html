@@ -15,11 +15,17 @@
       radial-gradient(ellipse at 50% 50%, #27463a 0%, #1d3329 70%, #142519 100%); }
   #frame { position: absolute; inset: 0; border: 22px solid #6b4a2b; box-shadow: inset 0 0 0 6px #4a3119, inset 0 0 160px rgba(0,0,0,.55); }
   svg#s { position: absolute; inset: 0; }
+  #persp { position: absolute; inset: 0; transform: perspective(1500px) rotateX(24deg) scale(1.08); transform-origin: 50% 62%; }
+  #persp svg { position: absolute; inset: 0; }
+  svg#ps .pop { transform-box: fill-box; transform-origin: center; }
+  #broll { position: absolute; inset: 0; overflow: hidden; display: none; background: #000; }
+  #broll img { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; object-fit: cover; transform-origin: 50% 45%; }
+  #brshade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.05) 35%, rgba(0,0,0,.1) 60%, rgba(0,0,0,.7) 100%); }
   svg#s .pop { transform-box: fill-box; transform-origin: center; }
   #progress { position: absolute; top: 22px; left: 22px; height: 12px; background: #ffe066; }
   #chip { position: absolute; top: 70px; left: 50%; transform: translateX(-50%) rotate(-2deg); white-space: nowrap;
           background: #ffe066; color: #1d3329; font-size: 40px; padding: 10px 32px; border-radius: 12px; }
-  #caption { position: absolute; top: 1495px; left: 50px; right: 50px; text-align: center; font-size: 76px; line-height: 1.2;
+  #caption { position: absolute; top: 1480px; left: 40px; right: 40px; text-align: center; font-size: 96px; line-height: 1.2;
              color: #fff; paint-order: stroke fill; -webkit-text-stroke: 11px #0e1a13; }
   #caption span { display: inline-block; margin: 0 12px; }
   #caption span.on { color: #ffe066; transform: scale(1.14) rotate(-2deg); }
@@ -28,6 +34,21 @@
 </head>
 <body>
 <div id="board"></div>
+<div id="persp"><svg id="ps" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <filter id="chalk2" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4"/>
+    </filter>
+    <radialGradient id="spotG"><stop offset="0" stop-color="#000"/><stop offset=".55" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>
+    <mask id="spotM" maskUnits="userSpaceOnUse" x="0" y="0" width="1080" height="1920">
+      <rect x="0" y="0" width="1080" height="1920" fill="#fff"/>
+      <circle id="spotC" cx="560" cy="700" r="230" fill="url(#spotG)"/>
+    </mask>
+  </defs>
+  <g id="cam"><g id="world" filter="url(#chalk2)"></g></g>
+</svg></div>
+<div id="broll"><img id="brimg" alt=""><div id="brshade"></div></div>
 <svg id="s" viewBox="0 0 1080 1920" width="1080" height="1920">
   <defs>
     <filter id="chalk" x="-5%" y="-5%" width="110%" height="110%">
@@ -35,7 +56,6 @@
       <feDisplacementMap in="SourceGraphic" in2="n" scale="4"/>
     </filter>
   </defs>
-  <g id="cam"><g id="world" filter="url(#chalk)"></g></g>
   <g id="hud" filter="url(#chalk)"></g>
 </svg>
 <div id="frame"></div>
@@ -114,7 +134,14 @@ const R_O = A_O.map(([x, y], i) => [x, y + (i === 0 ? 170 : 120)]);
 const P_B = [[500, 745], [620, 650], [625, 765], [345, 700], [735, 712], [552, 628], [480, 605], [680, 1000]];
 const M_B = [[300, 900], [460, 900], [620, 900], [780, 900], [300, 1050], [460, 1050], [620, 1050], [780, 1050]];
 const P = { B: [], O: [] };
-let ball;
+// realistic shots: scene index, start (s after the line starts), end ('end' = end of the line), Ken Burns zoom/pan
+const BROLL = [
+  { scene: 0, from: 0, to: 'end', frames: 'broll/stadium', count: 184, z0: 1.0, z1: 1.12, dim: .55 },
+  { scene: 4, from: 0, to: 'end', src: 'broll/tete-baissee.jpg', z0: 1.05, z1: 1.3, x0: 0, x1: -40, dim: .8 },
+  { scene: 5, from: 0, to: 1.8, src: 'broll/recuperation.jpg', z0: 1.15, z1: 1.0, dim: .85 },
+  { scene: 7, from: 0, to: 'end', src: 'broll/epuise.jpg', z0: 1.0, z1: 1.18, x0: -30, x1: 30, dim: .6 },
+];
+let ball, SPOT, TRAILS;
 
 function magnet(fill, ring) { return G(circ(0, 0, 62, { fill, fillStyle: 'solid', stroke: ring, strokeWidth: 7, roughness: 1.2 })); }
 function buildPitch() {
@@ -122,6 +149,11 @@ function buildPitch() {
                   rect(PX + 200, PY, 400, 190, { strokeWidth: 5 }), rect(PX + 310, PY, 180, 70, { strokeWidth: 5 }),
                   rect(PX + 330, PY - 26, 140, 26, { strokeWidth: 6, stroke: YEL }), circ(PX + PW / 2, PY + PH * .62, 200, { strokeWidth: 5 }));
   add(1, 'draw', pitch, 0, .7, 6);
+  SPOT = document.createElementNS(NS, 'rect'); SPOT.setAttribute('x', 0); SPOT.setAttribute('y', 0); SPOT.setAttribute('width', 1080); SPOT.setAttribute('height', 1920);
+  SPOT.setAttribute('fill', '#000'); SPOT.setAttribute('mask', 'url(#spotM)'); SPOT.setAttribute('opacity', 0); WORLD.appendChild(SPOT);
+  TRAILS = G(); WORLD.appendChild(TRAILS);
+  for (let i = 0; i < 9; i++) { const p = document.createElementNS(NS, 'path'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', i < 8 ? YEL : '#fff');
+    p.setAttribute('stroke-width', 16); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round'); p.setAttribute('opacity', .45); TRAILS.appendChild(p); }
   for (let i = 0; i < 8; i++) { const o = G(); WORLD.appendChild(o); o.appendChild(magnet(GAR, BLA)); P.B.push(o); }
   for (let i = 0; i < 6; i++) { const o = G(); WORLD.appendChild(o); o.appendChild(magnet('#f4f1e6', '#2b2b2b')); P.O.push(o); }
   ball = G(circ(0, 0, 30, { fill: '#fff', fillStyle: 'solid', stroke: DARK, strokeWidth: 4, roughness: .6 })); WORLD.appendChild(ball);
@@ -284,18 +316,54 @@ function render(t) {
   const onPitch = idx >= 1 && idx <= 6;
   const F = formation(idx, lt, t);
   const appear = idx === 1 ? easeBack((lt - .1) / .4) : 1;
-  P.B.forEach((g, i) => { g.style.display = onPitch ? '' : 'none'; g.setAttribute('transform', `translate(${F.B[i][0]} ${F.B[i][1] + (i < 3 && idx === 3 ? Math.sin(t * 20 + i) * 3 : 0)}) scale(${appear})`); });
-  P.O.forEach((g, i) => { g.style.display = onPitch ? '' : 'none'; g.setAttribute('transform', `translate(${F.O[i][0]} ${F.O[i][1]}) scale(${appear})`); });
+  P.B.forEach((g, i) => { g.style.display = onPitch ? '' : 'none'; g.setAttribute('transform', `translate(${F.B[i][0] + 3 * Math.sin(t * 2.3 + i)} ${F.B[i][1] + 3 * Math.cos(t * 1.9 + i * 2) + (i < 3 && idx === 3 ? Math.sin(t * 20 + i) * 3 : 0)}) scale(${appear})`); });
+  P.O.forEach((g, i) => { g.style.display = onPitch ? '' : 'none'; g.setAttribute('transform', `translate(${F.O[i][0] + 3 * Math.cos(t * 2.1 + i)} ${F.O[i][1] + 3 * Math.sin(t * 1.7 + i)}) scale(${appear})`); });
   ball.style.display = onPitch ? '' : 'none';
   ball.setAttribute('transform', `translate(${F.bp[0]} ${F.bp[1]}) scale(${appear})`);
 
+  // motion trails: where each moving piece was over the last 0.45 s
+  const trailOn = onPitch && [1, 3, 5, 6].includes(idx);
+  TRAILS.style.display = trailOn ? '' : 'none';
+  if (trailOn) {
+    const past = [];
+    for (let k = 8; k >= 0; k--) { const dt = k * .03; past.push(formation(idx, Math.max(0, lt - dt), t - dt)); }
+    TRAILS.childNodes.forEach((p, i) => {
+      const pts = past.map(f => i < 8 ? f.B[i] : f.bp);
+      const moved = Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]);
+      p.setAttribute('d', moved > 6 ? 'M' + pts.map(q => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' L') : '');
+    });
+  }
+
+  // spotlight on the key action
+  const FOCUS = { 1: [F.bp, 210], 2: [A_O[0], 230], 3: [A_O[0], 260], 5: [F.bp, 240], 6: [[540, 980], 420] };
+  const fc = FOCUS[idx];
+  SPOT.setAttribute('opacity', fc ? .62 * clamp((lt - .4) / .5) : 0);
+  if (fc) { const c = document.getElementById('spotC'); c.setAttribute('cx', fc[0][0]); c.setAttribute('cy', fc[0][1]); c.setAttribute('r', fc[1] * (1 + .04 * Math.sin(t * 4))); }
+
+  // b-roll (realistic shots) with a slow Ken Burns move
+  let br = null;
+  for (const b of BROLL) { const st = t - L[b.scene].start - b.from, end = b.to === 'end' ? L[b.scene].end + .2 - L[b.scene].start - b.from : b.to - b.from;
+    if (idx === b.scene && st >= 0 && st < end) br = { b, k: clamp(st / end), st }; }
+  const brDiv = document.getElementById('broll'), img = document.getElementById('brimg');
+  brDiv.style.display = br ? 'block' : 'none';
+  let pending = null;
+  if (br) {
+    const { b, k, st } = br;
+    const src = b.frames ? `${b.frames}/${String(Math.min(b.count, Math.floor(st * 30) + 1)).padStart(4, '0')}.jpg` : b.src;
+    if (img.getAttribute('src') !== src) { img.setAttribute('src', src); pending = img.decode().catch(() => {}); }
+    const z = lerp(b.z0, b.z1, k), x = lerp(b.x0 || 0, b.x1 || 0, k), flash = Math.max(0, 1 - st / .12);
+    img.style.transform = `translate(${x}px, 0) scale(${z})`;
+    img.style.filter = `brightness(${(b.dim || 1) + flash * .8}) contrast(1.1) saturate(1.15)`;
+  }
+
   // camera: zoom on the carrier while explaining, small punch on scene changes
   let z = 1, cx = 560, cy = 700;
-  if (idx === 4) z = 1 + .3 * easeIO(lt / .6);
-  if (idx === 5) z = 1.3 - .3 * easeIO(lt / .6);
+  if (idx === 4) z = 1;
+  if (idx === 5) z = 1;
   let punch = 1 + .03 * Math.max(0, 1 - lt / .25);
   for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < .2) punch += .025 * (1 - d / .2); }
-  document.getElementById('cam').setAttribute('transform', `translate(${cx} ${cy}) scale(${z * punch}) translate(${-cx} ${-cy})`);
+  const drift = 1 + .018 * Math.sin(t * .8);
+  document.getElementById('cam').setAttribute('transform', `translate(${cx + 8 * Math.sin(t * .5)} ${cy + 6 * Math.cos(t * .6)}) scale(${z * punch * drift}) translate(${-cx} ${-cy})`);
 
   // timer
   const ts = timerState(t);
@@ -312,9 +380,10 @@ function render(t) {
   const ws = words(idx), wt = ws.map(w => w.length + 2), sum = wt.reduce((a, b) => a + b, 0);
   const pp = clamp(lt / (ln.end - ln.start)) * sum; let acc = 0, cur = ws.length - 1;
   for (let i = 0; i < ws.length; i++) { acc += wt[i]; if (pp < acc) { cur = i; break; } }
-  const c0 = Math.floor(cur / 3) * 3, cap = document.getElementById('caption');
-  cap.innerHTML = ws.slice(c0, c0 + 3).map((w, i) => `<span class="${c0 + i === cur && speaking ? 'on' : ''}">${w.toUpperCase()}</span>`).join(' ');
+  const c0 = Math.floor(cur / 2) * 2, cap = document.getElementById('caption');
+  cap.innerHTML = ws.slice(c0, c0 + 2).map((w, i) => `<span class="${c0 + i === cur && speaking ? 'on' : ''}">${w.toUpperCase()}</span>`).join(' ');
   cap.style.opacity = (t < ln.start - .15 || t > ln.end + .25) ? 0 : 1;
+  return pending;
 }
 
 window.init = async tl => { TL = tl; await document.fonts.ready; build(); return window.CUES; };

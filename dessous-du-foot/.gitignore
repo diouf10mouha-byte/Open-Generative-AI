@@ -6,3 +6,5 @@ contact.png
 *.wav
 cues.json
 noe/trim*.wav
+videos/*/broll/stadium/
+videos/*/seq*/

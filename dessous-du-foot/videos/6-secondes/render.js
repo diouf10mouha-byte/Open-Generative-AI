@@ -2,7 +2,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path'), { execFileSync } = require('child_process');
 
-const DIR = __dirname, FPS = 30, OUT = 'tactique-6-secondes-v2.mp4';
+const DIR = __dirname, FPS = 30, OUT = 'tactique-6-secondes-v3.mp4';
 const only = process.argv[2]; // optional: comma-separated times -> preview stills
 
 (async () => {
@@ -16,7 +16,7 @@ const only = process.argv[2]; // optional: comma-separated times -> preview stil
 
   if (only) {
     for (const s of only.split(',')) {
-      await page.evaluate(t => window.render(t), +s);
+      await page.evaluate(async t => { await window.render(t); }, +s);
       await page.screenshot({ path: path.join(DIR, `still_${s}.png`) });
     }
     await browser.close(); return;
@@ -25,7 +25,7 @@ const only = process.argv[2]; // optional: comma-separated times -> preview stil
   fs.rmSync(frames, { recursive: true, force: true }); fs.mkdirSync(frames);
   const n = Math.ceil(tl.total * FPS);
   for (let i = 0; i < n; i++) {
-    await page.evaluate(t => window.render(t), i / FPS);
+    await page.evaluate(async t => { await window.render(t); }, i / FPS);
     await page.screenshot({ path: path.join(frames, `f${String(i).padStart(5, '0')}.jpg`), type: 'jpeg', quality: 92 });
   }
   await browser.close();
