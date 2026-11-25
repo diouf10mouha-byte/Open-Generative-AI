@@ -7,6 +7,7 @@ Vidéos TikTok / Shorts de 1 min à 1 min 30 : la tactique du foot expliquée su
 | Dossier | Sujet | Durée |
 |---|---|---|
 | `videos/6-secondes/` | La règle des 6 secondes du Barça de Guardiola (contre-pressing) — version finale : `tactique-6-secondes-v3.mp4` | 50 s |
+| `videos/inter-barca-2025/` | Inter 4-3 Barça, demi-finale retour de Ligue des champions 2025 : contexte, score cumulé en direct, Yamal, ce qui a manqué — `inter-barca-2025.mp4` | 1 min 26 |
 
 La vidéo finie est dans chaque dossier (`*.mp4`).
 

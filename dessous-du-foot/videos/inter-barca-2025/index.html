@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Kalam:wght@700&display=swap" rel="stylesheet">
+<script src="node_modules/roughjs/bundled/rough.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; }
+  body { position: relative; background: #1f362b; font-family: 'Permanent Marker', 'Noto Color Emoji', sans-serif; }
+  #board { position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.07), transparent 50%),
+                radial-gradient(ellipse at 75% 70%, rgba(255,255,255,.05), transparent 45%),
+                radial-gradient(ellipse at 50% 50%, #27463a 0%, #1d3329 70%, #142519 100%); }
+  #frame { position: absolute; inset: 0; border: 22px solid #6b4a2b; box-shadow: inset 0 0 0 6px #4a3119, inset 0 0 160px rgba(0,0,0,.55); pointer-events: none; }
+  svg#s { position: absolute; inset: 0; }
+  svg#s .pop { transform-box: fill-box; transform-origin: center; }
+  #broll { position: absolute; inset: 0; overflow: hidden; display: none; background: #000; }
+  #broll img { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; object-fit: cover; transform-origin: 50% 45%; }
+  #brshade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.6) 0%, rgba(0,0,0,.05) 35%, rgba(0,0,0,.1) 60%, rgba(0,0,0,.75) 100%); }
+  #flash { position: absolute; inset: 0; opacity: 0; mix-blend-mode: screen; }
+  #progress { position: absolute; top: 22px; left: 22px; height: 12px; background: #ffe066; }
+  #chip { position: absolute; top: 56px; left: 50%; transform: translateX(-50%) rotate(-2deg); white-space: nowrap;
+          background: #ffe066; color: #1d3329; font-size: 34px; padding: 8px 28px; border-radius: 12px; }
+  /* permanent scoreboard */
+  #sb { position: absolute; top: 130px; left: 60px; right: 60px; background: rgba(10,18,13,.88); border: 4px solid #f4f1e6; border-radius: 22px;
+        padding: 14px 24px 12px; color: #f4f1e6; display: none; transform-origin: 50% 0; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  #sb .row { display: flex; align-items: center; justify-content: space-between; }
+  #sb .tag { font-size: 30px; color: #ffe066; width: 170px; }
+  #sb .team { display: flex; align-items: center; gap: 12px; font-size: 40px; }
+  #sb .sh { width: 40px; height: 48px; clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%); }
+  #sb .bar { background: linear-gradient(90deg, #a50044 50%, #004d98 50%); }
+  #sb .int { background: repeating-linear-gradient(90deg, #0068b5 0 8px, #111 8px 16px); }
+  #sb .score { font-size: 64px; min-width: 190px; text-align: center; }
+  #sb .clock { font-size: 34px; width: 130px; text-align: right; color: #ffe066; }
+  #sb .cum { margin-top: 8px; padding-top: 8px; border-top: 2px dashed rgba(244,241,230,.35); font-family: 'Kalam'; font-size: 36px; display: flex; justify-content: space-between; }
+  #sb .q { padding: 0 16px; border-radius: 10px; }
+  #caption { position: absolute; top: 1480px; left: 40px; right: 40px; text-align: center; font-size: 96px; line-height: 1.15;
+             color: #fff; paint-order: stroke fill; -webkit-text-stroke: 11px #0e1a13; }
+  #caption span { display: inline-block; margin: 0 12px; }
+  #caption span.on { color: #ffe066; transform: scale(1.14) rotate(-2deg); }
+  #brand { position: absolute; bottom: 64px; left: 0; right: 0; text-align: center; font-family: 'Kalam'; font-size: 38px; color: #f4f1e6; opacity: .6; }
+</style>
+</head>
+<body>
+<div id="board"></div>
+<div id="broll"><img id="brimg" alt=""><div id="brshade"></div></div>
+<svg id="s" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <filter id="chalk" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4"/>
+    </filter>
+  </defs>
+  <g id="hud" filter="url(#chalk)"></g>
+</svg>
+<div id="flash"></div>
+<div id="sb">
+  <div class="row">
+    <div class="tag" id="sbTag">ALLER</div>
+    <div class="team"><div class="sh bar"></div>BARÇA</div>
+    <div class="score" id="sbScore">0 – 0</div>
+    <div class="team">INTER<div class="sh int"></div></div>
+    <div class="clock" id="sbClock"></div>
+  </div>
+  <div class="cum"><span>Cumul : <b id="sbCum">3 – 3</b></span><span class="q" id="sbQ">égalité</span></div>
+</div>
+<div id="frame"></div>
+<div id="progress"></div>
+<div id="chip">⚽ LES DESSOUS DU FOOT</div>
+<div id="caption"></div>
+<div id="brand">les histoires de foot qu'on ne t'a jamais racontées</div>
+
+<script>
+const CH = '#f4f1e6', YEL = '#ffe066', RED = '#ff6b6b', BLUE = '#7cc4ff', GAR = '#b3134f', BLA = '#1f5fbf', DARK = '#0e1a13', GREEN = '#7be37b', IBLUE = '#2a8fe0';
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('s'), HUD = document.getElementById('hud');
+const rc = rough.svg(svg);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const easeBack = x => { x = clamp(x); const c = 2.2; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+
+let TL, seed = 1;
+const ITEMS = [], CUES = [], PUNCH = [];
+const ro = o => Object.assign({ roughness: 2, bowing: 1.2, stroke: CH, strokeWidth: 6, seed: seed++, hachureGap: 16, fillWeight: 3 }, o || {});
+const S = i => TL.lines[i].start;
+
+function words(i) { return TL.lines[i].text.replace(/…/g, ' ').split(/\s+/).filter(w => w && !/^[:;!?,.]$/.test(w)); }
+function W(i, needle) {
+  const ws = words(i), wt = ws.map(w => w.length + 2), sum = wt.reduce((a, b) => a + b, 0);
+  const d = TL.lines[i].end - TL.lines[i].start; let acc = 0;
+  for (let k = 0; k < ws.length; k++) { if (ws[k].toLowerCase().includes(needle.toLowerCase())) return d * acc / sum; acc += wt[k]; }
+  console.warn('word not found', i, needle); return 0;
+}
+function T(x, y, str, o = {}) {
+  const t = document.createElementNS(NS, 'text');
+  t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('text-anchor', o.anchor || 'middle');
+  t.setAttribute('font-size', o.size || 80); t.setAttribute('fill', o.fill || CH);
+  t.setAttribute('font-family', (o.font || "'Permanent Marker'") + ", 'Noto Color Emoji'");
+  if (o.stroke) { t.setAttribute('stroke', o.stroke); t.setAttribute('stroke-width', o.sw || 8); t.setAttribute('paint-order', 'stroke'); t.setAttribute('stroke-linejoin', 'round'); }
+  if (o.rot) t.setAttribute('transform', `rotate(${o.rot} ${x} ${y})`);
+  t.textContent = str; t.dataset.full = str; return t;
+}
+function G(...nodes) { const g = document.createElementNS(NS, 'g'); nodes.flat().forEach(n => n && g.appendChild(n)); return g; }
+const rect = (x, y, w, h, o) => rc.rectangle(x, y, w, h, ro(o));
+const line = (x1, y1, x2, y2, o) => rc.line(x1, y1, x2, y2, ro(o));
+const circ = (x, y, d, o) => rc.circle(x, y, d, ro(o));
+const path = (d, o) => rc.path(d, ro(o));
+const poly = (p, o) => rc.polygon(p, ro(o));
+function arrow(x1, y1, x2, y2, o = {}) {
+  const a = Math.atan2(y2 - y1, x2 - x1), h = o.head || 34;
+  const mx = (x1 + x2) / 2 + Math.cos(a + Math.PI / 2) * (o.curve || 0), my = (y1 + y2) / 2 + Math.sin(a + Math.PI / 2) * (o.curve || 0);
+  return G(path(`M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`, o),
+           path(`M${x2 + Math.cos(a + 2.6) * h} ${y2 + Math.sin(a + 2.6) * h} L${x2} ${y2} L${x2 + Math.cos(a - 2.6) * h} ${y2 + Math.sin(a - 2.6) * h}`, o));
+}
+function add(scene, kind, node, at = 0, dur = .6, until = scene) {
+  HUD.appendChild(node);
+  const it = { node, scene, until, at, dur, kind };
+  if (kind === 'draw') it.paths = [...node.querySelectorAll('path')].map(p => { const L = p.getTotalLength() + 2; p.style.strokeDasharray = L; return { p, L }; });
+  if (kind === 'pop') { node.classList.add('pop'); PUNCH.push(S(scene) + at); }
+  ITEMS.push(it); return node;
+}
+function shield(x, y, w, h, team) {
+  const pts = [[x, y], [x + w, y], [x + w, y + .6 * h], [x + w / 2, y + h], [x, y + .6 * h]];
+  if (team === 'bar') return G(poly([[x, y], [x + w / 2, y], [x + w / 2, y + h], [x, y + .6 * h]], { fill: '#a50044', fillStyle: 'solid', stroke: 'none' }),
+                              poly([[x + w / 2, y], [x + w, y], [x + w, y + .6 * h], [x + w / 2, y + h]], { fill: '#004d98', fillStyle: 'solid', stroke: 'none' }),
+                              poly(pts, { strokeWidth: 8 }));
+  const g = G(); const n = 6;
+  for (let k = 0; k < n; k++) {
+    const x0 = x + k * w / n, x1 = x0 + w / n, yb = xx => xx <= x + w / 2 ? y + .6 * h + (xx - x) / (w / 2) * .4 * h : y + h - (xx - x - w / 2) / (w / 2) * .4 * h;
+    g.appendChild(poly([[x0, y], [x1, y], [x1, yb(x1)], [x0, yb(x0)]], { fill: k % 2 ? '#111' : '#0068b5', fillStyle: 'solid', stroke: 'none', roughness: .8 }));
+  }
+  g.appendChild(poly(pts, { strokeWidth: 8 })); return g;
+}
+function trophy(cx, top, s) {
+  return G(path(`M${cx - 120 * s} ${top} L${cx + 120 * s} ${top} Q${cx + 110 * s} ${top + 220 * s} ${cx} ${top + 250 * s} Q${cx - 110 * s} ${top + 220 * s} ${cx - 120 * s} ${top} Z`, { stroke: YEL, strokeWidth: 8, fill: 'rgba(255,224,102,.35)', fillStyle: 'hachure' }),
+           path(`M${cx - 120 * s} ${top + 30 * s} Q${cx - 210 * s} ${top + 40 * s} ${cx - 110 * s} ${top + 150 * s}`, { stroke: YEL, strokeWidth: 7 }),
+           path(`M${cx + 120 * s} ${top + 30 * s} Q${cx + 210 * s} ${top + 40 * s} ${cx + 110 * s} ${top + 150 * s}`, { stroke: YEL, strokeWidth: 7 }),
+           line(cx, top + 250 * s, cx, top + 330 * s, { stroke: YEL, strokeWidth: 9 }), rect(cx - 90 * s, top + 330 * s, 180 * s, 50 * s, { stroke: YEL, strokeWidth: 8 }));
+}
+function goalCard(y, minute, name, sub, col) {
+  return G(rect(120, y, 840, 150, { stroke: col, strokeWidth: 6, fill: 'rgba(0,0,0,.35)', fillStyle: 'solid' }),
+           T(250, y + 98, minute, { size: 64, fill: col }), T(370, y + 80, name, { size: 64, anchor: 'start' }),
+           sub ? T(372, y + 130, sub, { size: 36, anchor: 'start', font: 'Kalam', fill: CH }) : null);
+}
+
+// ---------- match events (scoreboard) ----------
+let EV = [];
+function buildEvents() {
+  EV = [
+    { t: S(1) + .2, tag: 'ALLER', b: 3, i: 3, clock: 'fin' },
+    { t: S(4), tag: 'RETOUR', b: 0, i: 0, clock: "0'" },
+    { t: S(4) + W(4, 'Lautaro'), tag: 'RETOUR', b: 0, i: 1, clock: "21'", goal: 'i' },
+    { t: S(4) + W(4, 'Çalhanoğlu'), tag: 'RETOUR', b: 0, i: 2, clock: "45+1'", goal: 'i' },
+    { t: S(5) + W(5, 'García'), tag: 'RETOUR', b: 1, i: 2, clock: "54'", goal: 'b' },
+    { t: S(5) + W(5, 'Olmo'), tag: 'RETOUR', b: 2, i: 2, clock: "60'", goal: 'b' },
+    { t: S(7) + W(7, 'Raphinha'), tag: 'RETOUR', b: 3, i: 2, clock: "87'", goal: 'b' },
+    { t: S(8) + W(8, 'Acerbi'), tag: 'RETOUR', b: 3, i: 3, clock: "90+3'", goal: 'i' },
+    { t: S(9) + .2, tag: 'PROLONG.', b: 3, i: 3, clock: "91'" },
+    { t: S(9) + W(9, 'Frattesi'), tag: 'PROLONG.', b: 3, i: 4, clock: "99'", goal: 'i' },
+    { t: S(10) - .3, tag: 'FINAL', b: 3, i: 4, clock: 'fin' },
+  ];
+  EV.filter(e => e.goal).forEach(e => CUES.push({ t: e.t, fx: 'roar' }));
+}
+function stateAt(t) { let s = null; for (const e of EV) if (t >= e.t) s = e; return s; }
+
+// ---------- scenes ----------
+const BROLL = [];
+const DYN = {};
+function build() {
+  buildEvents();
+  CUES.push({ t: .02, fx: 'whistle' });
+  TL.lines.forEach((l, i) => { if (i) CUES.push({ t: l.start - .05, fx: 'kick' }); });
+  CUES.push({ t: S(9) - .1, fx: 'whistle' }, { t: S(10) - .4, fx: 'whistle' });
+
+  // 0: hook over the stadium
+  BROLL.push({ scene: 0, from: 0, to: 'end', frames: 'broll/stadium', count: 184, z0: 1.0, z1: 1.15, dim: .5 });
+  add(0, 'pop', T(540, 560, '6 MAI 2025', { size: 84, fill: YEL, rot: -3 }), .05);
+  add(0, 'pop', T(540, 760, 'SAN SIRO', { size: 170, stroke: DARK, sw: 14 }), W(0, 'San'));
+  add(0, 'pop', T(540, 870, 'demi-finale retour · Ligue des champions', { size: 46, font: 'Kalam' }), W(0, 'Barça'));
+  add(0, 'pop', T(540, 1270, 'TOUT S\'ÉCROULE', { size: 110, fill: RED, stroke: DARK, sw: 14, rot: -6 }), W(0, 'écroule'));
+
+  // 1: first leg 3-3
+  add(1, 'pop', T(540, 520, 'MATCH ALLER · BARCELONE', { size: 70, fill: YEL }), .1);
+  add(1, 'draw', shield(160, 640, 280, 330, 'bar'), .2, .5);
+  add(1, 'draw', shield(640, 640, 280, 330, 'int'), .35, .5);
+  add(1, 'pop', T(540, 830, 'VS', { size: 80 }), .5);
+  add(1, 'pop', T(540, 1240, '3 – 3', { size: 240, fill: YEL, stroke: DARK, sw: 14 }), W(1, 'trois'));
+  add(1, 'pop', T(540, 1360, 'un match fou 🤯', { size: 60, font: 'Kalam' }), W(1, 'fou'));
+
+  // 2: key moments of the first leg
+  add(2, 'pop', goalCard(560, "1'", 'THURAM', 'l\'Inter marque après 30 secondes ⚡', IBLUE), W(2, 'Inter'));
+  add(2, 'pop', goalCard(760, "24'", 'YAMAL ⭐', 'un but de génie, à 17 ans', '#e0457b'), W(2, 'Yamal'));
+  add(2, 'pop', T(540, 1110, '+ 4 autres buts…', { size: 54, font: 'Kalam' }), W(2, 'incroyable'));
+  add(2, 'pop', T(540, 1320, 'TOUT SE JOUE À MILAN', { size: 84, fill: YEL, stroke: DARK, sw: 12, rot: -3 }), W(2, 'Milan'));
+
+  // 3: stakes
+  add(3, 'draw', trophy(540, 520, 1), .1, .9);
+  add(3, 'pop', T(540, 1040, '1ʳᵉ FINALE DEPUIS 2015 ?', { size: 72, fill: YEL }), W(3, 'finale'));
+  add(3, 'pop', G(rect(220, 1120, 640, 150, { stroke: '#e0457b', strokeWidth: 7 }), T(540, 1218, 'YAMAL · 17 ANS ⭐', { size: 70 })), W(3, 'Yamal'));
+  add(3, 'pop', T(540, 1380, 'la légende l\'attend', { size: 54, font: 'Kalam' }), W(3, 'légende'));
+
+  // 4: Inter 2-0
+  add(4, 'pop', T(540, 520, 'MATCH RETOUR · MILAN', { size: 70, fill: YEL }), .1);
+  add(4, 'pop', goalCard(620, "21'", 'LAUTARO', null, IBLUE), W(4, 'Lautaro'));
+  add(4, 'pop', goalCard(800, "45+1'", 'ÇALHANOĞLU', 'sur penalty, juste avant la pause', IBLUE), W(4, 'Çalhanoğlu'));
+  // 5: Barça comes back
+  add(5, 'pop', T(540, 520, 'LA RÉVOLTE 🔥', { size: 84, fill: RED }), .1);
+  add(5, 'pop', goalCard(620, "54'", 'ERIC GARCÍA', null, '#e0457b'), W(5, 'García'));
+  add(5, 'pop', goalCard(800, "60'", 'DANI OLMO', 'de la tête', '#e0457b'), W(5, 'Olmo'));
+  add(5, 'pop', T(800, 1030, '6 MIN ⚡', { size: 80, fill: YEL, rot: -8 }), W(5, 'six'));
+  // big centre score (scenes 4, 5, 7, 8)
+  DYN.big = T(540, 1290, '', { size: 200, fill: CH, stroke: DARK, sw: 14 }); HUD.appendChild(DYN.big);
+
+  // 6: Yamal vs Sommer (keeper b-roll)
+  BROLL.push({ scene: 6, from: 0, to: 'end', src: 'broll/arret.jpg', z0: 1.0, z1: 1.2, x0: 20, x1: -30, dim: .75 });
+  add(6, 'pop', T(540, 560, 'YAMAL 🔥', { size: 120, fill: '#ff8fb3', stroke: DARK, sw: 12, rot: -4 }), W(6, 'Yamal'));
+  add(6, 'pop', T(540, 660, 'dribbles · frappes · San Siro tremble', { size: 44, font: 'Kalam', stroke: DARK, sw: 8 }), W(6, 'dribble'));
+  add(6, 'pop', T(540, 1330, 'SOMMER ARRÊTE TOUT 🧤', { size: 84, fill: YEL, stroke: DARK, sw: 12, rot: -3 }), W(6, 'Sommer'));
+
+  // 7: Raphinha 87'
+  add(7, 'pop', goalCard(620, "87'", 'RAPHINHA !', null, '#e0457b'), W(7, 'Raphinha'));
+  add(7, 'pop', T(540, 960, 'LA FINALE EST LÀ 🏆', { size: 88, fill: GREEN, rot: -3 }), W(7, 'finale'));
+  // 8: Acerbi 90+3'
+  add(8, 'pop', goalCard(620, "90+3'", 'ACERBI', 'défenseur central', IBLUE), W(8, 'Acerbi'));
+  add(8, 'pop', T(540, 960, '37 ANS 😱', { size: 110, fill: RED, rot: -4 }), W(8, 'trente'));
+
+  // 9: extra time, Frattesi (celebration b-roll)
+  BROLL.push({ scene: 9, from: 0, to: 'end', src: 'broll/celebration.jpg', z0: 1.15, z1: 1.0, dim: .7 });
+  add(9, 'pop', T(540, 560, 'PROLONGATION', { size: 100, fill: YEL, stroke: DARK, sw: 12 }), .1);
+  add(9, 'pop', T(540, 720, "99' FRATTESI", { size: 110, stroke: DARK, sw: 12 }), W(9, 'Frattesi'));
+  add(9, 'pop', T(540, 1320, 'L\'INTER EN FINALE', { size: 96, fill: BLUE, stroke: DARK, sw: 14, rot: -3 }), W(9, 'finale'));
+
+  // 10: what went wrong #1 — high line
+  add(10, 'pop', T(540, 470, 'CE QUI A MANQUÉ', { size: 90, fill: YEL }), .05);
+  add(10, 'pop', T(540, 560, '1 · une ligne trop haute', { size: 56, font: 'Kalam' }), W(10, 'défense'));
+  add(10, 'draw', G(rect(160, 620, 760, 700, { strokeWidth: 6 }), line(160, 900, 920, 900, { strokeWidth: 5 }), rect(380, 1200, 320, 120, { strokeWidth: 5 }), rect(470, 1320, 140, 22, { stroke: YEL, strokeWidth: 6 })), .3, .7);
+  [260, 420, 660, 820].forEach((x, j) => add(10, 'pop', circ(x, 960, 60, { fill: GAR, fillStyle: 'solid', stroke: BLA, strokeWidth: 7, roughness: 1.2 }), W(10, 'haute') + j * .08));
+  add(10, 'draw', line(200, 960, 880, 960, { stroke: RED, strokeWidth: 5, strokeLineDash: [16, 14] }), W(10, 'haute'), .4);
+  add(10, 'pop', circ(560, 920, 60, { fill: CH, fillStyle: 'solid', stroke: '#2b2b2b', strokeWidth: 7, roughness: 1.2 }), W(10, 'haute') + .3);
+  add(10, 'draw', arrow(330, 760, 600, 1150, { stroke: YEL, strokeWidth: 7, curve: -60 }), W(10, 'dos') - .3, .5);
+  add(10, 'draw', arrow(560, 960, 580, 1150, { stroke: CH, strokeWidth: 6, head: 24 }), W(10, 'dos') - .1, .4);
+  add(10, 'pop', T(540, 1110, 'ESPACE DANS LE DOS', { size: 52, fill: RED, stroke: DARK, sw: 10 }), W(10, 'encore'));
+
+  // 11: what went wrong #2 and #3
+  add(11, 'pop', T(540, 470, 'CE QUI A MANQUÉ', { size: 90, fill: YEL }), .05);
+  [['1 · LIGNE TROP HAUTE', 'Ensuite', 640], ['2 · SOMMER EN FEU 🧤', 'Sommer', 840], ['3 · TENIR 3 MINUTES ⏱', 'expérience', 1040]].forEach(([txt, k, y]) => {
+    add(11, 'pop', T(130, y, txt, { size: 58, anchor: 'start' }), k === 'Ensuite' ? .2 : W(11, k));
+    add(11, 'draw', G(line(880, y - 50, 940, y + 10, { stroke: RED, strokeWidth: 10, roughness: 1 }), line(940, y - 50, 880, y + 10, { stroke: RED, strokeWidth: 10, roughness: 1 })), (k === 'Ensuite' ? .2 : W(11, k)) + .2, .3);
+  });
+  add(11, 'pop', T(540, 1270, 'l\'expérience des grands soirs', { size: 54, font: 'Kalam' }), W(11, 'trois'));
+
+  // 12: 7-6
+  add(12, 'pop', T(540, 900, '7 – 6', { size: 320, fill: YEL, stroke: DARK, sw: 16, rot: -3 }), W(12, 'Sept'));
+  add(12, 'pop', T(540, 1050, 'sur les deux matchs', { size: 60, font: 'Kalam' }), W(12, 'deux'));
+  add(12, 'pop', T(540, 1240, 'UNE DES DEMIES LES PLUS FOLLES 🤯', { size: 54, fill: CH }), W(12, 'folles'));
+
+  // 13: the twist
+  add(13, 'pop', T(540, 560, 'ET LE PIRE ?', { size: 100, fill: RED, rot: -3 }), .05);
+  add(13, 'pop', T(540, 760, 'FINALE', { size: 70, fill: YEL }), W(13, 'finale'));
+  add(13, 'pop', T(540, 960, 'PSG 5 – 0 INTER', { size: 130, stroke: DARK, sw: 14 }), W(13, 'cinq'));
+  add(13, 'pop', T(540, 1170, '😬', { size: 180 }), W(13, 'PSG'));
+
+  // 14: subscribe
+  add(14, 'draw', rect(170, 700, 740, 190, { fill: GAR, fillStyle: 'solid', strokeWidth: 8 }), 0, .4);
+  add(14, 'pop', T(540, 828, '🔔 ABONNE-TOI', { size: 84, fill: '#fff' }), .2);
+  add(14, 'pop', T(540, 1040, 'd\'autres histoires de foot arrivent', { size: 56, font: 'Kalam' }), W(14, 'histoires'));
+
+  window.CUES = CUES.sort((a, b) => a.t - b.t);
+}
+
+// ---------- render ----------
+function render(t) {
+  const L = TL.lines;
+  let idx = 0; L.forEach((l, i) => { if (t >= l.start - 0.15) idx = i; });
+  const ln = L[idx], lt = t - ln.start, speaking = t >= ln.start && t <= ln.end;
+  document.getElementById('progress').style.width = `${(1036 * clamp(t / TL.total)).toFixed(1)}px`;
+
+  let punch = 1;
+  for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < .2) punch += .02 * (1 - d / .2); }
+  HUD.setAttribute('transform', `translate(540 900) scale(${punch * (1 + .012 * Math.sin(t * .8))}) translate(-540 -900)`);
+
+  for (const it of ITEMS) {
+    const active = idx >= it.scene && idx <= it.until, st = t - L[it.scene].start - it.at;
+    if (!active || st < 0) { it.node.style.display = 'none'; continue; }
+    it.node.style.display = '';
+    const p = clamp(st / it.dur);
+    if (it.kind === 'draw') it.paths.forEach(({ p: el, L: len }) => { el.style.strokeDashoffset = len * (1 - easeOut(p)); });
+    else if (it.kind === 'pop') { it.node.style.transform = `scale(${Math.max(easeBack(st / .32), .01)})`; it.node.style.opacity = clamp(st / .1); }
+  }
+
+  // scoreboard
+  const sbOn = idx >= 1 && idx <= 12, s = stateAt(t), sb = document.getElementById('sb');
+  sb.style.display = sbOn && s ? 'block' : 'none';
+  let lastGoal = null; for (const e of EV) if (e.goal && t >= e.t) lastGoal = e;
+  const gd = lastGoal ? t - lastGoal.t : 99;
+  if (sbOn && s) {
+    document.getElementById('sbTag').textContent = s.tag;
+    document.getElementById('sbScore').textContent = `${s.b} – ${s.i}`;
+    document.getElementById('sbClock').textContent = s.clock;
+    const cb = s.tag === 'ALLER' ? 3 : 3 + s.b, ci = s.tag === 'ALLER' ? 3 : 3 + s.i;
+    document.getElementById('sbCum').textContent = `${cb} – ${ci}`;
+    const q = document.getElementById('sbQ');
+    if (s.tag === 'ALLER' || cb === ci) { q.textContent = 'égalité'; q.style.background = '#555'; }
+    else if (cb > ci) { q.textContent = 'Barça qualifié'; q.style.background = '#a50044'; }
+    else { q.textContent = 'Inter qualifiée'; q.style.background = '#0068b5'; }
+    const pulse = gd < .5 ? 1 + .08 * Math.sin(Math.PI * gd / .5) : 1;
+    sb.style.transform = `scale(${pulse})`;
+  }
+  // goal flash
+  const fl = document.getElementById('flash');
+  fl.style.background = lastGoal && lastGoal.goal === 'b' ? '#c2185b' : '#1e88e5';
+  fl.style.opacity = gd < .6 ? (.45 * (1 - gd / .6)).toFixed(3) : 0;
+
+  // big centre score
+  const bigOn = [4, 5, 7, 8].includes(idx) && s;
+  DYN.big.style.display = bigOn ? '' : 'none';
+  if (bigOn) { DYN.big.textContent = `${s.b} – ${s.i}`; DYN.big.setAttribute('fill', gd < 1.2 ? (lastGoal.goal === 'b' ? '#ff8fb3' : BLUE) : CH);
+    DYN.big.style.transformBox = 'fill-box'; DYN.big.style.transformOrigin = 'center'; DYN.big.style.transform = `scale(${gd < .4 ? 1 + .25 * Math.sin(Math.PI * gd / .4) : 1})`; }
+
+  // b-roll
+  let br = null;
+  for (const b of BROLL) { const st = t - L[b.scene].start - b.from, end = b.to === 'end' ? L[b.scene].end + .2 - L[b.scene].start - b.from : b.to - b.from;
+    if (idx === b.scene && st >= 0 && st < end) br = { b, k: clamp(st / end), st }; }
+  const brDiv = document.getElementById('broll'), img = document.getElementById('brimg');
+  brDiv.style.display = br ? 'block' : 'none';
+  let pending = null;
+  if (br) {
+    const { b, k, st } = br;
+    const src = b.frames ? `${b.frames}/${String(Math.min(b.count, Math.floor(st * 30) + 1)).padStart(4, '0')}.jpg` : b.src;
+    if (img.getAttribute('src') !== src) { img.setAttribute('src', src); pending = img.decode().catch(() => {}); }
+    img.style.transform = `translate(${lerp(b.x0 || 0, b.x1 || 0, k)}px, 0) scale(${lerp(b.z0, b.z1, k)})`;
+    img.style.filter = `brightness(${(b.dim || 1) + Math.max(0, 1 - st / .12) * .8}) contrast(1.1) saturate(1.15)`;
+  }
+
+  // captions, 2 words at a time
+  const ws = words(idx), wt = ws.map(w => w.length + 2), sum = wt.reduce((a, b) => a + b, 0);
+  const pp = clamp(lt / (ln.end - ln.start)) * sum; let acc = 0, cur = ws.length - 1;
+  for (let i = 0; i < ws.length; i++) { acc += wt[i]; if (pp < acc) { cur = i; break; } }
+  const c0 = Math.floor(cur / 2) * 2, cap = document.getElementById('caption');
+  cap.innerHTML = ws.slice(c0, c0 + 2).map((w, i) => `<span class="${c0 + i === cur && speaking ? 'on' : ''}">${w.toUpperCase()}</span>`).join(' ');
+  cap.style.opacity = (t < ln.start - .15 || t > ln.end + .25) ? 0 : 1;
+  return pending;
+}
+
+window.init = async tl => { TL = tl; await document.fonts.ready; build(); return window.CUES; };
+window.render = render;
+</script>
+</body>
+</html>
