@@ -1,0 +1,38 @@
+# Les dessous du foot
+
+Vidéos TikTok / Shorts de 1 min à 1 min 30 : la tactique du foot expliquée sur un tableau à la craie.
+
+## Vidéos
+
+| Dossier | Sujet | Durée |
+|---|---|---|
+| `videos/6-secondes/` | La règle des 6 secondes du Barça de Guardiola (contre-pressing) | 50 s |
+
+La vidéo finie est dans chaque dossier (`*.mp4`).
+
+## Comment c'est fabriqué
+
+1. **Script** : les phrases sont listées dans `timeline.py`.
+2. **Voix off** : voix « Noé – Content Creator » d'ElevenLabs (`voice_id` `7pDdnNI6PhXmAp0pXFZm`, modèle `eleven_v4`), une phrase par fichier dans `noe/line0.mp3`, `line1.mp3`…
+3. **Sons** : ambiance de stade, clameur, sifflet et frappe de balle générés par ElevenLabs, dans `sfx/`.
+4. **Animation** : `index.html` dessine le tableau, les pions et les flèches (rough.js) image par image. Chaque scène correspond à une phrase du script, et les éléments apparaissent sur des mots précis grâce à la fonction `W(scène, 'mot')`.
+5. **Rendu** : `render.js` capture les images avec Playwright, `audio2.py` mixe la voix, la foule (qui baisse quand la voix parle) et les bruitages, puis ffmpeg assemble le MP4 en 1080×1920.
+
+## Refaire une vidéo
+
+Prérequis : Node 18+, Python 3, ffmpeg, Playwright avec Chromium.
+
+```bash
+cd videos/6-secondes
+npm install
+python3 timeline.py        # voice.wav + timeline.json à partir de noe/*.mp3
+node render.js 2,12,21     # quelques images d'aperçu (still_*.png)
+node render.js             # la vidéo complète
+```
+
+## Nouvelle vidéo
+
+1. Copier `videos/6-secondes` vers `videos/<sujet>`.
+2. Écrire les nouvelles phrases dans `timeline.py` et générer une voix par phrase avec ElevenLabs dans `noe/`.
+3. Adapter les scènes de `index.html` (fonction `build()`) : titres, pions, flèches, mots déclencheurs.
+4. Lancer `python3 timeline.py` puis `node render.js`.

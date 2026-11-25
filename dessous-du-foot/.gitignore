@@ -1,0 +1,8 @@
+node_modules/
+frames/
+seq/
+still_*.png
+contact.png
+*.wav
+cues.json
+noe/trim*.wav

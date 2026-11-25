@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Kalam:wght@700&display=swap" rel="stylesheet">
+<script src="node_modules/roughjs/bundled/rough.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; }
+  body { position: relative; background: #1f362b; font-family: 'Permanent Marker', 'Noto Color Emoji', sans-serif; }
+  #board { position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.07), transparent 50%),
+      radial-gradient(ellipse at 75% 70%, rgba(255,255,255,.05), transparent 45%),
+      radial-gradient(ellipse at 50% 50%, #27463a 0%, #1d3329 70%, #142519 100%); }
+  #frame { position: absolute; inset: 0; border: 22px solid #6b4a2b; box-shadow: inset 0 0 0 6px #4a3119, inset 0 0 160px rgba(0,0,0,.55); }
+  svg#s { position: absolute; inset: 0; }
+  svg#s .pop { transform-box: fill-box; transform-origin: center; }
+  #progress { position: absolute; top: 22px; left: 22px; height: 12px; background: #ffe066; }
+  #chip { position: absolute; top: 70px; left: 50%; transform: translateX(-50%) rotate(-2deg); white-space: nowrap;
+          background: #ffe066; color: #1d3329; font-size: 40px; padding: 10px 32px; border-radius: 12px; }
+  #caption { position: absolute; top: 1495px; left: 50px; right: 50px; text-align: center; font-size: 76px; line-height: 1.2;
+             color: #fff; paint-order: stroke fill; -webkit-text-stroke: 11px #0e1a13; }
+  #caption span { display: inline-block; margin: 0 12px; }
+  #caption span.on { color: #ffe066; transform: scale(1.14) rotate(-2deg); }
+  #brand { position: absolute; bottom: 64px; left: 0; right: 0; text-align: center; font-family: 'Kalam'; font-size: 38px; color: #f4f1e6; opacity: .6; }
+</style>
+</head>
+<body>
+<div id="board"></div>
+<svg id="s" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <filter id="chalk" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4"/>
+    </filter>
+  </defs>
+  <g id="cam"><g id="world" filter="url(#chalk)"></g></g>
+  <g id="hud" filter="url(#chalk)"></g>
+</svg>
+<div id="frame"></div>
+<div id="progress"></div>
+<div id="chip">⚽ LES DESSOUS DU FOOT</div>
+<div id="caption"></div>
+<div id="brand">la tactique expliquée à la craie</div>
+
+<script>
+const CH = '#f4f1e6', YEL = '#ffe066', RED = '#ff6b6b', BLUE = '#7cc4ff', GAR = '#b3134f', BLA = '#1f5fbf', DARK = '#0e1a13';
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('s'), WORLD = document.getElementById('world'), HUD = document.getElementById('hud');
+const rc = rough.svg(svg);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const easeIO = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const easeBack = x => { x = clamp(x); const c = 2.2; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const lerpP = (A, B, k) => A.map((p, i) => [lerp(p[0], B[i][0], k), lerp(p[1], B[i][1], k)]);
+
+let TL, seed = 1;
+const ITEMS = [], CUES = [], PUNCH = [];
+const ro = o => Object.assign({ roughness: 2, bowing: 1.2, stroke: CH, strokeWidth: 6, seed: seed++, hachureGap: 16, fillWeight: 3 }, o || {});
+const S = i => TL.lines[i].start;
+
+function words(i) { return TL.lines[i].text.replace(/…/g, ' ').split(/\s+/).filter(w => w && !/^[:;!?,.]$/.test(w)); }
+function W(i, needle) {
+  const ws = words(i), wt = ws.map(w => w.length + 2), sum = wt.reduce((a, b) => a + b, 0);
+  const d = TL.lines[i].end - TL.lines[i].start; let acc = 0;
+  for (let k = 0; k < ws.length; k++) { if (ws[k].toLowerCase().includes(needle.toLowerCase())) return d * acc / sum; acc += wt[k]; }
+  console.warn('word not found', i, needle); return 0;
+}
+
+function T(x, y, str, o = {}) {
+  const t = document.createElementNS(NS, 'text');
+  t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('text-anchor', o.anchor || 'middle');
+  t.setAttribute('font-size', o.size || 80); t.setAttribute('fill', o.fill || CH);
+  t.setAttribute('font-family', (o.font || "'Permanent Marker'") + ", 'Noto Color Emoji'");
+  if (o.stroke) { t.setAttribute('stroke', o.stroke); t.setAttribute('stroke-width', o.sw || 8); t.setAttribute('paint-order', 'stroke'); t.setAttribute('stroke-linejoin', 'round'); }
+  if (o.rot) t.setAttribute('transform', `rotate(${o.rot} ${x} ${y})`);
+  t.textContent = str; t.dataset.full = str; return t;
+}
+function G(...nodes) { const g = document.createElementNS(NS, 'g'); nodes.flat().forEach(n => n && g.appendChild(n)); return g; }
+const rect = (x, y, w, h, o) => rc.rectangle(x, y, w, h, ro(o));
+const line = (x1, y1, x2, y2, o) => rc.line(x1, y1, x2, y2, ro(o));
+const circ = (x, y, d, o) => rc.circle(x, y, d, ro(o));
+const path = (d, o) => rc.path(d, ro(o));
+function arrow(x1, y1, x2, y2, o = {}) {
+  const a = Math.atan2(y2 - y1, x2 - x1), h = o.head || 34;
+  const mx = (x1 + x2) / 2 + Math.cos(a + Math.PI / 2) * (o.curve || 0), my = (y1 + y2) / 2 + Math.sin(a + Math.PI / 2) * (o.curve || 0);
+  return G(path(`M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`, o),
+           path(`M${x2 + Math.cos(a + 2.6) * h} ${y2 + Math.sin(a + 2.6) * h} L${x2} ${y2} L${x2 + Math.cos(a - 2.6) * h} ${y2 + Math.sin(a - 2.6) * h}`, o));
+}
+function dashed(x1, y1, x2, y2, o = {}) {
+  const n = Math.max(3, Math.round(Math.hypot(x2 - x1, y2 - y1) / 40)), g = G();
+  for (let k = 0; k < n; k += 2) g.appendChild(line(lerp(x1, x2, k / n), lerp(y1, y2, k / n), lerp(x1, x2, (k + 1) / n), lerp(y1, y2, (k + 1) / n), Object.assign({ strokeWidth: 5, roughness: 1 }, o)));
+  return g;
+}
+function cross(x, y, s = 30, o = {}) { return G(line(x - s, y - s, x + s, y + s, Object.assign({ stroke: RED, strokeWidth: 9, roughness: 1 }, o)), line(x + s, y - s, x - s, y + s, Object.assign({ stroke: RED, strokeWidth: 9, roughness: 1 }, o))); }
+
+function add(scene, kind, node, at = 0, dur = .6, until = scene, layer = WORLD) {
+  layer.appendChild(node);
+  const it = { node, scene, until, at, dur, kind };
+  if (kind === 'draw') it.paths = [...node.querySelectorAll('path')].map(p => { const L = p.getTotalLength() + 2; p.style.strokeDasharray = L; return { p, L }; });
+  if (kind === 'pop') { node.classList.add('pop'); PUNCH.push(S(scene) + at); }
+  ITEMS.push(it); return node;
+}
+const hud = (scene, kind, node, at, dur, until) => add(scene, kind, node, at, dur, until ?? scene, HUD);
+
+// ---------------- pitch & players ----------------
+const PX = 140, PY = 420, PW = 800, PH = 930;
+const A_B = [[540, 770], [420, 640], [700, 660], [330, 850], [770, 870], [540, 990], [400, 1160], [680, 1160]];
+const A_O = [[560, 700], [420, 520], [680, 520], [270, 690], [830, 710], [545, 560]];
+const R_B = [[300, 1090], [460, 1090], [620, 1090], [780, 1090], [300, 1240], [460, 1240], [620, 1240], [780, 1240]];
+const R_O = A_O.map(([x, y], i) => [x, y + (i === 0 ? 170 : 120)]);
+const P_B = [[500, 745], [620, 650], [625, 765], [345, 700], [735, 712], [552, 628], [480, 605], [680, 1000]];
+const M_B = [[300, 900], [460, 900], [620, 900], [780, 900], [300, 1050], [460, 1050], [620, 1050], [780, 1050]];
+const P = { B: [], O: [] };
+let ball;
+
+function magnet(fill, ring) { return G(circ(0, 0, 62, { fill, fillStyle: 'solid', stroke: ring, strokeWidth: 7, roughness: 1.2 })); }
+function buildPitch() {
+  const pitch = G(rect(PX, PY, PW, PH, { strokeWidth: 6 }), line(PX, PY + PH * .62, PX + PW, PY + PH * .62, { strokeWidth: 5 }),
+                  rect(PX + 200, PY, 400, 190, { strokeWidth: 5 }), rect(PX + 310, PY, 180, 70, { strokeWidth: 5 }),
+                  rect(PX + 330, PY - 26, 140, 26, { strokeWidth: 6, stroke: YEL }), circ(PX + PW / 2, PY + PH * .62, 200, { strokeWidth: 5 }));
+  add(1, 'draw', pitch, 0, .7, 6);
+  for (let i = 0; i < 8; i++) { const o = G(); WORLD.appendChild(o); o.appendChild(magnet(GAR, BLA)); P.B.push(o); }
+  for (let i = 0; i < 6; i++) { const o = G(); WORLD.appendChild(o); o.appendChild(magnet('#f4f1e6', '#2b2b2b')); P.O.push(o); }
+  ball = G(circ(0, 0, 30, { fill: '#fff', fillStyle: 'solid', stroke: DARK, strokeWidth: 4, roughness: .6 })); WORLD.appendChild(ball);
+}
+
+// ---------------- timer ----------------
+const TIMER = { cx: 860, cy: 520 };
+let timerG, timerNum, timerRing;
+function timerState(t) {
+  const c0 = S(2) + .4, step = 1.6, rec = S(5) + W(5, 'récupère');
+  const r0 = S(6) + W(6, 'secondes'), rstep = .32;
+  if (t < c0 || t >= S(7)) return null;
+  if (t < S(6)) {
+    if (t >= rec) return { v: '✓', col: '#7be37b', frac: 1 };
+    const v = Math.max(2, 6 - Math.floor((t - c0) / step));
+    return { v: String(v), col: S(4) <= t && t < S(5) ? BLUE : YEL, frac: v / 6, paused: S(4) <= t && t < S(5) };
+  }
+  if (t < r0) return { v: '6', col: YEL, frac: 1 };
+  const v = Math.max(0, 6 - Math.floor((t - r0) / rstep));
+  return { v: String(v), col: v === 0 ? RED : YEL, frac: v / 6 };
+}
+function timerCues() {
+  let prev = null;
+  for (let t = 0; t < TL.total; t += 1 / 60) {
+    const s = timerState(t), v = s ? s.v : null;
+    if (v !== prev && (v === '✓' || v === '0')) CUES.push({ t, fx: v === '✓' ? 'roar' : 'whistle' });
+    prev = v;
+  }
+}
+function buildTimer() {
+  timerRing = document.createElementNS(NS, 'circle');
+  timerRing.setAttribute('cx', TIMER.cx); timerRing.setAttribute('cy', TIMER.cy); timerRing.setAttribute('r', 70);
+  timerRing.setAttribute('fill', 'none'); timerRing.setAttribute('stroke-width', 12); timerRing.setAttribute('stroke-linecap', 'round');
+  timerRing.setAttribute('transform', `rotate(-90 ${TIMER.cx} ${TIMER.cy})`);
+  timerNum = T(TIMER.cx, TIMER.cy + 32, '6', { size: 96 });
+  const bg = document.createElementNS(NS, 'circle');
+  bg.setAttribute('cx', TIMER.cx); bg.setAttribute('cy', TIMER.cy); bg.setAttribute('r', 82); bg.setAttribute('fill', DARK); bg.setAttribute('opacity', .85);
+  timerG = G(bg, timerRing, timerNum); HUD.appendChild(timerG);
+}
+
+// ---------------- scenes ----------------
+function build() {
+  buildPitch(); buildTimer();
+  CUES.push({ t: .02, fx: 'whistle' }); CUES.push({ t: .25, fx: 'kick' });
+  TL.lines.forEach((l, i) => { if (i) CUES.push({ t: l.start - .05, fx: 'kick' }); });
+
+  // 0: hook
+  hud(0, 'pop', T(540, 470, 'CONTRE LE BARÇA…', { size: 92, rot: -2 }), .05);
+  hud(0, 'pop', T(540, 990, '6', { size: 560, fill: YEL, rot: -4 }), .25);
+  hud(0, 'pop', T(540, 1150, 'SECONDES', { size: 120, fill: YEL, rot: -2 }), W(0, 'six'));
+  hud(0, 'pop', T(540, 1400, 'PAS UNE DE PLUS.', { size: 84, fill: RED, stroke: DARK, sw: 12, rot: -5 }), W(0, 'Pas'));
+  hud(0, 'draw', circ(540, 820, 520, { stroke: RED, strokeWidth: 9, roughness: 2.6 }), W(0, 'récupérais'), .5);
+  hud(0, 'type', T(540, 1265, 'GUARDIOLA · 2008-2012', { size: 56, fill: BLUE, font: 'Kalam' }), W(0, 'Guardiola'), .6);
+
+  // 1: normal team retreats
+  hud(1, 'pop', T(540, 330, 'ÉQUIPE "NORMALE"', { size: 78 }), .1);
+  hud(1, 'pop', T(540, 640, 'PERTE DE BALLE !', { size: 64, fill: RED, stroke: DARK, sw: 10, rot: -4 }), .3);
+  add(1, 'draw', G([300, 460, 620, 780].map(x => arrow(x, 830, x, 1010, { stroke: YEL, strokeWidth: 6 }))), W(1, 'recule') - .3, .6);
+  hud(1, 'pop', T(540, 1440, 'ON RECULE ⬇', { size: 70, fill: YEL, stroke: DARK, sw: 10 }), W(1, 'recule'));
+
+  // 2: Barça does the opposite
+  hud(2, 'pop', T(540, 330, 'LE BARÇA : ON ATTAQUE ⬆', { size: 70, fill: RED }), W(2, 'inverse') - .2);
+  hud(2, 'pop', T(330, 620, 'PERTE !', { size: 60, fill: RED, stroke: DARK, sw: 10, rot: -6 }), .1);
+  add(2, 'draw', circ(560, 700, 150, { stroke: RED, strokeWidth: 7, roughness: 2.4 }), W(2, 'attaque'), .5, 3);
+
+  // 3: three on the ball, lanes cut
+  hud(3, 'pop', T(540, 330, '3 SUR LE PORTEUR', { size: 76, fill: YEL }), W(3, 'Trois'));
+  [[0, 'foncent'], [1, 'foncent'], [2, 'foncent']].forEach(([b, k], j) =>
+    add(3, 'draw', arrow(A_B[b][0], A_B[b][1], lerp(A_B[b][0], P_B[b][0], .8), lerp(A_B[b][1], P_B[b][1], .8), { stroke: YEL, strokeWidth: 6, head: 22, curve: 20 }), W(3, k) + j * .1, .4));
+  [1, 3, 4, 5].forEach((o, j) => {
+    add(3, 'draw', dashed(A_O[0][0], A_O[0][1], A_O[o][0], A_O[o][1], { stroke: CH }), W(3, 'autres') + j * .1, .3, 5);
+    const mx = (A_O[0][0] + A_O[o][0]) / 2, my = (A_O[0][1] + A_O[o][1]) / 2;
+    add(3, 'pop', cross(mx, my, 24), W(3, 'ferment') + .2 + j * .2, .3, 5);
+  });
+  hud(3, 'pop', T(540, 1440, 'PASSES COUPÉES ✂', { size: 70, fill: RED, stroke: DARK, sw: 10 }), W(3, 'passes'));
+
+  // 4: why so fast (zoom on the carrier)
+  hud(4, 'pop', T(540, 330, '⏸ POURQUOI SI VITE ?', { size: 76, fill: BLUE, stroke: DARK, sw: 14 }), .1);
+  add(4, 'pop', T(560, 630, '👀', { size: 90 }), W(4, 'regarde'));
+  [1, 2, 3, 4, 5].forEach((o, j) => add(4, 'pop', T(A_O[o][0] + 30, A_O[o][1] - 40, '?', { size: 70, fill: YEL }), W(4, 'tête') + j * .12));
+  hud(4, 'pop', T(540, 1440, 'TÊTE BAISSÉE', { size: 90, fill: YEL, stroke: DARK, sw: 12, rot: -3 }), W(4, 'tête'));
+
+  // 5: recovered high up the pitch
+  hud(5, 'pop', T(540, 330, 'BALLON RÉCUPÉRÉ ✅', { size: 80, fill: '#7be37b' }), W(5, 'récupère'));
+  add(5, 'draw', arrow(620, 610, 540, 445, { stroke: YEL, strokeWidth: 7 }), W(5, 'trente') - .1, .4);
+  hud(5, 'pop', T(360, 520, '30 M', { size: 100, fill: YEL, stroke: DARK, sw: 12, rot: -6 }), W(5, 'trente'));
+  hud(5, 'pop', T(540, 1440, 'À DEUX PAS DU BUT', { size: 70, fill: CH, stroke: DARK, sw: 10 }), W(5, 'but'));
+
+  // 6: plan B
+  hud(6, 'pop', T(540, 330, 'ÉCHEC ? PLAN B', { size: 80, fill: RED }), W(6, 'marche'));
+  hud(6, 'pop', T(540, 1440, 'ON SE REPLACE 🧘', { size: 70, fill: YEL, stroke: DARK, sw: 10 }), W(6, 'replace'));
+
+  // 7: possession
+  hud(7, 'pop', T(540, 470, 'RÉSULTAT', { size: 110, fill: YEL, rot: -2 }), .1);
+  hud(7, 'draw', rect(140, 760, 800, 150, { strokeWidth: 7 }), .3, .4);
+  const bar = document.createElementNS(NS, 'rect'); bar.setAttribute('x', 150); bar.setAttribute('y', 770); bar.setAttribute('height', 130); bar.setAttribute('fill', GAR);
+  HUD.appendChild(bar); ITEMS.push({ node: bar, scene: 7, until: 7, at: 0, dur: 1, kind: 'bar' });
+  hud(7, 'pop', T(330, 990, 'BARÇA', { size: 64, fill: CH }), .9);
+  hud(7, 'pop', T(870, 990, 'EUX', { size: 50, fill: CH, font: 'Kalam' }), 1.1);
+  hud(7, 'pop', T(540, 1250, '« il est où le ballon ?! » 😵‍💫', { size: 64, fill: CH, font: 'Kalam' }), W(7, 'jamais'));
+
+  // 8: counter-pressing today
+  hud(8, 'pop', G(rect(110, 400, 860, 190, { stroke: RED, strokeWidth: 12, roughness: 1.4 }), T(540, 530, 'CONTRE-PRESSING', { size: 86, fill: RED })), W(8, 'contre'));
+  [['KLOPP', 280, 820, -5, 'Klopp'], ['ARTETA', 760, 820, 4, 'Arteta'], ['ET PRESQUE TOUT LE MONDE', 540, 1070, -2, 'presque']].forEach(([n, x, y, r, k]) =>
+    hud(8, 'pop', T(x, y, n, { size: n.length > 10 ? 64 : 92, fill: YEL, rot: r }), W(8, k)));
+
+  // 9: subscribe + teaser
+  hud(9, 'draw', rect(170, 560, 740, 190, { fill: GAR, fillStyle: 'solid', strokeWidth: 8 }), 0, .4);
+  hud(9, 'pop', T(540, 690, '🔔 ABONNE-TOI', { size: 84, fill: '#fff' }), .3);
+  hud(9, 'type', T(540, 900, 'prochain épisode :', { size: 60, font: 'Kalam' }), W(9, 'prochaine'), .6);
+  hud(9, 'draw', rect(340, 960, 400, 300, { strokeWidth: 7, stroke: YEL }), W(9, 'faux') - .3, .4);
+  hud(9, 'pop', T(540, 1170, 'FAUX 9', { size: 110, fill: YEL, rot: -4 }), W(9, 'faux'));
+
+  timerCues();
+  window.CUES = CUES.sort((a, b) => a.t - b.t);
+}
+
+// ---------------- render ----------------
+function formation(idx, lt, t) {
+  let B = A_B, O = A_O, bp;
+  const carrier = O => O[0];
+  if (idx <= 1) {
+    const k = idx === 1 ? easeIO((lt - W(1, 'recule') + .3) / 2.0) : 0;
+    B = lerpP(A_B, R_B, k); O = lerpP(A_O, R_O, k);
+    const lose = idx === 1 ? easeOut((lt - .2) / .45) : 0;
+    bp = [lerp(B[0][0] + 20, O[0][0], lose), lerp(B[0][1] - 30, O[0][1] + 25, lose)];
+  } else if (idx === 2) { B = A_B; O = A_O; bp = [O[0][0], O[0][1] + 25]; }
+  else if (idx >= 3 && idx <= 5) {
+    const k = idx === 3 ? easeIO((lt - W(3, 'foncent')) / 1.4) : 1;
+    B = lerpP(A_B, P_B, k);
+    bp = [O[0][0], O[0][1] + 25];
+    if (idx === 5) { const r = easeOut((lt - W(5, 'récupère')) / .4); bp = [lerp(bp[0], B[1][0] + 20, r), lerp(bp[1], B[1][1] + 20, r)]; }
+  } else if (idx === 6) {
+    const r0 = W(6, 'secondes') + 6 * .32;
+    const k = easeIO((lt - r0 - .2) / 1.6);
+    B = lerpP(P_B, M_B, k); bp = [O[0][0], O[0][1] + 25];
+  }
+  return { B, O, bp: bp || [O[0][0], O[0][1] + 25] };
+}
+
+function render(t) {
+  const L = TL.lines;
+  let idx = 0; L.forEach((l, i) => { if (t >= l.start - 0.15) idx = i; });
+  const ln = L[idx], lt = t - ln.start, speaking = t >= ln.start && t <= ln.end;
+  document.getElementById('progress').style.width = `calc(${100 * clamp(t / TL.total)}% - 44px * ${clamp(t / TL.total)})`;
+
+  for (const it of ITEMS) {
+    const active = idx >= it.scene && idx <= it.until;
+    const st = t - L[it.scene].start - it.at;
+    if (!active || st < 0) { it.node.style.display = 'none'; continue; }
+    it.node.style.display = '';
+    const p = clamp(st / it.dur);
+    if (it.kind === 'draw') it.paths.forEach(({ p: el, L: len }) => { el.style.strokeDashoffset = len * (1 - easeOut(p)); });
+    else if (it.kind === 'pop') { it.node.style.transform = `scale(${Math.max(easeBack(st / .32), .01)})`; it.node.style.opacity = clamp(st / .1); }
+    else if (it.kind === 'type') { const s = [...it.node.dataset.full]; it.node.textContent = s.slice(0, Math.ceil(s.length * p)).join(''); }
+    else if (it.kind === 'bar') it.node.setAttribute('width', 780 * .74 * easeOut((st - .4) / 1.4));
+  }
+
+  // players
+  const onPitch = idx >= 1 && idx <= 6;
+  const F = formation(idx, lt, t);
+  const appear = idx === 1 ? easeBack((lt - .1) / .4) : 1;
+  P.B.forEach((g, i) => { g.style.display = onPitch ? '' : 'none'; g.setAttribute('transform', `translate(${F.B[i][0]} ${F.B[i][1] + (i < 3 && idx === 3 ? Math.sin(t * 20 + i) * 3 : 0)}) scale(${appear})`); });
+  P.O.forEach((g, i) => { g.style.display = onPitch ? '' : 'none'; g.setAttribute('transform', `translate(${F.O[i][0]} ${F.O[i][1]}) scale(${appear})`); });
+  ball.style.display = onPitch ? '' : 'none';
+  ball.setAttribute('transform', `translate(${F.bp[0]} ${F.bp[1]}) scale(${appear})`);
+
+  // camera: zoom on the carrier while explaining, small punch on scene changes
+  let z = 1, cx = 560, cy = 700;
+  if (idx === 4) z = 1 + .3 * easeIO(lt / .6);
+  if (idx === 5) z = 1.3 - .3 * easeIO(lt / .6);
+  let punch = 1 + .03 * Math.max(0, 1 - lt / .25);
+  for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < .2) punch += .025 * (1 - d / .2); }
+  document.getElementById('cam').setAttribute('transform', `translate(${cx} ${cy}) scale(${z * punch}) translate(${-cx} ${-cy})`);
+
+  // timer
+  const ts = timerState(t);
+  timerG.style.display = ts ? '' : 'none';
+  if (ts) {
+    timerNum.textContent = ts.v; timerNum.setAttribute('fill', ts.col);
+    timerRing.setAttribute('stroke', ts.col);
+    timerRing.setAttribute('stroke-dasharray', `${2 * Math.PI * 70 * ts.frac} 999`);
+    const shake = ts.v === '0' ? Math.sin(t * 60) * 6 : 0;
+    timerG.setAttribute('transform', `translate(${shake} 0)`);
+  }
+
+  // karaoke captions
+  const ws = words(idx), wt = ws.map(w => w.length + 2), sum = wt.reduce((a, b) => a + b, 0);
+  const pp = clamp(lt / (ln.end - ln.start)) * sum; let acc = 0, cur = ws.length - 1;
+  for (let i = 0; i < ws.length; i++) { acc += wt[i]; if (pp < acc) { cur = i; break; } }
+  const c0 = Math.floor(cur / 3) * 3, cap = document.getElementById('caption');
+  cap.innerHTML = ws.slice(c0, c0 + 3).map((w, i) => `<span class="${c0 + i === cur && speaking ? 'on' : ''}">${w.toUpperCase()}</span>`).join(' ');
+  cap.style.opacity = (t < ln.start - .15 || t > ln.end + .25) ? 0 : 1;
+}
+
+window.init = async tl => { TL = tl; await document.fonts.ready; build(); return window.CUES; };
+window.render = render;
+</script>
+</body>
+</html>
