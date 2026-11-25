@@ -1,0 +1,16 @@
+{
+  "name": "les-dessous-du-foot-6-secondes",
+  "version": "1.0.0",
+  "description": "Vidéo tactique « La règle des 6 secondes »",
+  "main": "index.js",
+  "scripts": {
+    "render": "node render.js",
+    "preview": "node render.js 2,12,21,33"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "roughjs": "^4.6.6"
+  }
+}

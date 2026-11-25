@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Kalam:wght@700&display=swap" rel="stylesheet">
+<script src="node_modules/roughjs/bundled/rough.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; }
+  body { position: relative; background: #1f362b; font-family: 'Permanent Marker', 'Noto Color Emoji', sans-serif; }
+  #board { position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.07), transparent 50%),
+                radial-gradient(ellipse at 50% 50%, #27463a 0%, #1d3329 70%, #142519 100%); }
+  #bgcol { position: absolute; inset: 0; opacity: 0; }
+  #frame { position: absolute; inset: 0; border: 22px solid #6b4a2b; box-shadow: inset 0 0 0 6px #4a3119, inset 0 0 160px rgba(0,0,0,.55); }
+  svg#s { position: absolute; inset: 0; }
+  svg#s .pop { transform-box: fill-box; transform-origin: center; }
+  #broll { position: absolute; inset: 0; overflow: hidden; display: none; background: #000; }
+  #broll img { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; object-fit: cover; object-position: 50% 25%; transform-origin: 50% 35%; }
+  #brshade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.6) 0%, rgba(0,0,0,.05) 35%, rgba(0,0,0,.15) 60%, rgba(0,0,0,.8) 100%); }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  #progress { position: absolute; top: 22px; left: 22px; height: 12px; background: #ffe066; }
+  #chip { position: absolute; top: 56px; left: 50%; transform: translateX(-50%) rotate(-2deg); white-space: nowrap;
+          background: #ffe066; color: #1d3329; font-size: 34px; padding: 8px 28px; border-radius: 12px; }
+  #hudbar { position: absolute; top: 130px; left: 60px; right: 60px; display: none; justify-content: space-between; gap: 20px; }
+  #hudbar .box { background: rgba(10,18,13,.88); border: 4px solid #f4f1e6; border-radius: 18px; padding: 10px 22px; color: #f4f1e6; font-size: 34px; transform-origin: center; }
+  #hudbar b { color: #ffe066; font-size: 48px; }
+  #credit { position: absolute; left: 40px; bottom: 120px; font-family: 'Kalam'; font-size: 24px; color: rgba(255,255,255,.75); display: none; }
+  #caption { position: absolute; top: 1480px; left: 40px; right: 40px; text-align: center; font-size: 96px; line-height: 1.15;
+             color: #fff; paint-order: stroke fill; -webkit-text-stroke: 11px #0e1a13; }
+  #caption span { display: inline-block; margin: 0 12px; }
+  #caption span.on { color: #ffe066; transform: scale(1.14) rotate(-2deg); }
+  #brand { position: absolute; bottom: 64px; left: 0; right: 0; text-align: center; font-family: 'Kalam'; font-size: 38px; color: #f4f1e6; opacity: .6; }
+</style>
+</head>
+<body>
+<div id="board"></div>
+<div id="bgcol"></div>
+<div id="broll"><img id="brimg" alt=""><div id="brshade"></div></div>
+<svg id="s" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <filter id="chalk" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4"/>
+    </filter>
+  </defs>
+  <g id="hud" filter="url(#chalk)"></g>
+</svg>
+<div id="flash"></div>
+<div id="hudbar"><div class="box" id="hbCount">EXPLOITS <b>0</b></div><div class="box" id="hbAge">ÂGE <b>15</b> ans</div></div>
+<div id="credit"></div>
+<div id="frame"></div>
+<div id="progress"></div>
+<div id="chip">⚽ LES DESSOUS DU FOOT</div>
+<div id="caption"></div>
+<div id="brand">les stats de foot qu'on ne t'a jamais racontées</div>
+
+<script>
+const CH = '#f4f1e6', YEL = '#ffe066', RED = '#ff6b6b', BLUE = '#7cc4ff', GAR = '#b3134f', DARK = '#0e1a13', GREEN = '#7be37b', GOLD = '#f5c542', PINK = '#ff8fb3';
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('s'), HUD = document.getElementById('hud');
+const rc = rough.svg(svg);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const easeBack = x => { x = clamp(x); const c = 2.2; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+
+let TL, seed = 1;
+const ITEMS = [], CUES = [], PUNCH = [], BROLL = [];
+const ro = o => Object.assign({ roughness: 2, bowing: 1.2, stroke: CH, strokeWidth: 6, seed: seed++, hachureGap: 16, fillWeight: 3 }, o || {});
+const S = i => TL.lines[i].start;
+function words(i) { return TL.lines[i].text.replace(/…/g, ' ').split(/\s+/).filter(w => w && !/^[:;!?,.]$/.test(w)); }
+function W(i, needle) {
+  const ws = words(i), wt = ws.map(w => w.length + 2), sum = wt.reduce((a, b) => a + b, 0);
+  const d = TL.lines[i].end - TL.lines[i].start; let acc = 0;
+  for (let k = 0; k < ws.length; k++) { if (ws[k].toLowerCase().includes(needle.toLowerCase())) return d * acc / sum; acc += wt[k]; }
+  console.warn('word not found', i, needle); return 0;
+}
+function T(x, y, str, o = {}) {
+  const t = document.createElementNS(NS, 'text');
+  t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('text-anchor', o.anchor || 'middle');
+  t.setAttribute('font-size', o.size || 80); t.setAttribute('fill', o.fill || CH);
+  t.setAttribute('font-family', (o.font || "'Permanent Marker'") + ", 'Noto Color Emoji'");
+  if (o.stroke) { t.setAttribute('stroke', o.stroke); t.setAttribute('stroke-width', o.sw || 8); t.setAttribute('paint-order', 'stroke'); t.setAttribute('stroke-linejoin', 'round'); }
+  if (o.rot) t.setAttribute('transform', `rotate(${o.rot} ${x} ${y})`);
+  t.textContent = str; return t;
+}
+function IMG(href, x, y, w, h) { const im = document.createElementNS(NS, 'image'); im.setAttribute('href', href); im.setAttribute('x', x); im.setAttribute('y', y);
+  im.setAttribute('width', w); im.setAttribute('height', h); im.setAttribute('preserveAspectRatio', 'xMidYMid meet'); return im; }
+function G(...nodes) { const g = document.createElementNS(NS, 'g'); nodes.flat().forEach(n => n && g.appendChild(n)); return g; }
+const rect = (x, y, w, h, o) => rc.rectangle(x, y, w, h, ro(o));
+const line = (x1, y1, x2, y2, o) => rc.line(x1, y1, x2, y2, ro(o));
+const circ = (x, y, d, o) => rc.circle(x, y, d, ro(o));
+const path = (d, o) => rc.path(d, ro(o));
+const poly = (p, o) => rc.polygon(p, ro(o));
+function add(scene, kind, node, at = 0, dur = .6) {
+  HUD.appendChild(node);
+  const it = { node, scene, at, dur, kind };
+  if (kind === 'draw') it.paths = [...node.querySelectorAll('path')].map(p => { const L = p.getTotalLength() + 2; p.style.strokeDasharray = L; return { p, L }; });
+  if (kind === 'pop') { node.classList.add('pop'); PUNCH.push(S(scene) + at); }
+  ITEMS.push(it); return node;
+}
+function badge(y, txt, col, sub) {
+  return G(rect(110, y, 860, sub ? 150 : 120, { stroke: col, strokeWidth: 7, fill: 'rgba(0,0,0,.55)', fillStyle: 'solid' }),
+           T(540, y + (sub ? 72 : 80), txt, { size: 56, fill: col }), sub ? T(540, y + 126, sub, { size: 38, font: 'Kalam' }) : null);
+}
+function stamp(x, y, txt, col, rot = -10) {
+  return G(rect(x - 200, y - 75, 400, 110, { stroke: col, strokeWidth: 10, roughness: 1.3 }), T(x, y, txt, { size: 70, fill: col }));
+}
+function barcaShield(x, y, w, h) {
+  return G(poly([[x, y], [x + w / 2, y], [x + w / 2, y + h], [x, y + .6 * h]], { fill: '#a50044', fillStyle: 'solid', stroke: 'none' }),
+           poly([[x + w / 2, y], [x + w, y], [x + w, y + .6 * h], [x + w / 2, y + h]], { fill: '#004d98', fillStyle: 'solid', stroke: 'none' }),
+           poly([[x, y], [x + w, y], [x + w, y + .6 * h], [x + w / 2, y + h], [x, y + .6 * h]], { strokeWidth: 8 }));
+}
+
+// exploits counter + age shown at the top
+const STEPS = [];   // {t, count, age}
+const BGCOL = { 3: 'linear-gradient(180deg,#aa151b 0 30%,#f1bf00 30% 70%,#aa151b 70%)', 8: 'radial-gradient(circle,#4a0d0d,#160404)' };
+
+function build() {
+  CUES.push({ t: .02, fx: 'whistle' });
+  TL.lines.forEach((l, i) => { if (i) CUES.push({ t: l.start - .05, fx: 'kick' }); });
+
+  // 0 — hook over a real photo
+  BROLL.push({ scene: 0, src: 'real/yamal-france-a.jpg', alt: 'real/yamal.jpg', z0: 1.12, z1: 1.0, dim: .55, credit: 'Photo : Bryan Berlin, CC BY-SA 4.0, Wikimedia Commons' });
+  add(0, 'pop', T(540, 560, 'AVANT 18 ANS…', { size: 120, fill: YEL, stroke: DARK, sw: 14, rot: -4 }), .05);
+  add(0, 'pop', T(540, 1180, 'YAMAL', { size: 200, stroke: DARK, sw: 16 }), W(0, 'Yamal'));
+  add(0, 'pop', T(540, 1330, '> MESSI ?', { size: 120, fill: RED, stroke: DARK, sw: 14, rot: -3 }), W(0, 'Messi'));
+
+  // 1 — Liga debut (chalkboard + shield)
+  add(1, 'draw', barcaShield(380, 470, 320, 380), .05, .5);
+  add(1, 'pop', T(540, 1040, '15 ANS', { size: 190, fill: YEL, stroke: DARK, sw: 14 }), W(1, 'Quinze'));
+  add(1, 'pop', T(540, 1150, '& 9 MOIS', { size: 90, fill: YEL }), W(1, 'neuf'));
+  add(1, 'pop', badge(1220, '1ᵉʳ MATCH EN LIGA', CH), W(1, 'premier'));
+  STEPS.push({ t: S(1) + W(1, 'premier'), count: 1, age: '15 ans' });
+
+  // 2 — youngest Liga scorer (big ball + record stamp)
+  add(2, 'draw', G(circ(540, 720, 420, { strokeWidth: 9 }), poly([[540, 640], [610, 690], [585, 775], [495, 775], [470, 690]], { fill: CH, fillStyle: 'solid' }),
+                   line(540, 640, 540, 520, { strokeWidth: 5 }), line(610, 690, 720, 650, { strokeWidth: 5 }), line(585, 775, 650, 880, { strokeWidth: 5 }),
+                   line(495, 775, 430, 880, { strokeWidth: 5 }), line(470, 690, 360, 650, { strokeWidth: 5 })), .05, .6);
+  add(2, 'pop', T(540, 1080, '16 ANS', { size: 180, fill: YEL, stroke: DARK, sw: 14 }), W(2, 'Seize'));
+  add(2, 'pop', badge(1160, 'PLUS JEUNE BUTEUR', CH, 'de toute l\'histoire de la Liga'), W(2, 'buteur'));
+  add(2, 'pop', stamp(780, 520, 'RECORD', RED, 12), W(2, 'histoire'));
+  STEPS.push({ t: S(2) + W(2, 'buteur'), count: 2, age: '16 ans' });
+
+  // 3 — Spain (red-yellow background)
+  add(3, 'pop', T(540, 700, '16 ANS', { size: 200, fill: '#fff', stroke: '#aa151b', sw: 16 }), W(3, 'Seize'));
+  add(3, 'pop', T(540, 860, '& 57 JOURS', { size: 110, fill: '#aa151b', stroke: '#fff', sw: 10 }), W(3, 'cinquante'));
+  add(3, 'pop', badge(1080, 'PLUS JEUNE BUTEUR', '#fff', 'de l\'histoire de l\'équipe d\'Espagne'), W(3, 'buteur'));
+  STEPS.push({ t: S(3) + W(3, 'buteur'), count: 3, age: '16 ans' });
+
+  // 4 — Euro 2024 (real photo + three stacked badges)
+  BROLL.push({ scene: 4, src: 'real/yamal.jpg', z0: 1.0, z1: 1.15, dim: .5, credit: 'Photo : Biso, CC BY 4.0, Wikimedia Commons' });
+  add(4, 'pop', T(540, 480, 'EURO 2024', { size: 120, fill: YEL, stroke: DARK, sw: 14 }), .05);
+  add(4, 'pop', badge(600, 'PLUS JEUNE JOUEUR', CH), W(4, 'joueur'));
+  add(4, 'pop', badge(760, 'PLUS JEUNE BUTEUR', CH), W(4, 'buteur'));
+  add(4, 'pop', badge(920, 'CHAMPION D\'EUROPE 🏆', GOLD, 'le lendemain de ses 17 ans'), W(4, 'champion'));
+  STEPS.push({ t: S(4) + W(4, 'joueur'), count: 4, age: '16 ans' }, { t: S(4) + W(4, 'buteur'), count: 5, age: '16 ans' }, { t: S(4) + W(4, 'champion'), count: 6, age: '17 ans' });
+
+  // 5 — Champions League vs Inter (real logo)
+  add(5, 'pop', IMG('real/inter-logo.png', 340, 460, 400, 400), .1);
+  add(5, 'pop', T(540, 1040, '17 ANS', { size: 190, fill: YEL, stroke: DARK, sw: 14 }), W(5, 'Dix-sept'));
+  add(5, 'pop', badge(1120, 'BUT DE GÉNIE ⭐', PINK, 'demi-finale de Ligue des champions'), W(5, 'génie'));
+  STEPS.push({ t: S(5) + W(5, 'génie'), count: 7, age: '17 ans' });
+
+  // 6 — Ballon d'Or (golden ball)
+  add(6, 'draw', G(circ(540, 720, 440, { stroke: GOLD, strokeWidth: 10, fill: 'rgba(245,197,66,.45)', fillStyle: 'hachure', hachureGap: 12 }),
+                   path('M330 640 Q540 560 750 640', { stroke: GOLD, strokeWidth: 6 }), path('M330 800 Q540 880 750 800', { stroke: GOLD, strokeWidth: 6 })), .05, .7);
+  add(6, 'pop', T(540, 770, '2ᵉ', { size: 200, fill: '#fff', stroke: DARK, sw: 14 }), W(6, 'deuxième'));
+  add(6, 'pop', T(540, 1080, 'BALLON D\'OR 2025', { size: 96, fill: GOLD }), W(6, 'Ballon'));
+  add(6, 'pop', T(540, 1260, 'À 18 ANS', { size: 150, fill: YEL, stroke: DARK, sw: 14, rot: -4 }), W(6, 'dix-huit'));
+  STEPS.push({ t: S(6) + W(6, 'deuxième'), count: 8, age: '18 ans' });
+
+  // 7 — Messi comparison (two columns)
+  add(7, 'pop', T(540, 470, 'À 17 ANS…', { size: 110, fill: YEL }), .05);
+  add(7, 'draw', line(540, 540, 540, 1340, { strokeWidth: 5 }), .1, .4);
+  add(7, 'pop', T(300, 610, 'YAMAL', { size: 84, fill: PINK }), .2);
+  add(7, 'pop', T(780, 610, 'MESSI', { size: 84, fill: BLUE }), W(7, 'Messi'));
+  ['Liga ✔', 'Espagne ✔', 'Euro 🏆', 'LDC ⭐'].forEach((x, j) => add(7, 'pop', T(300, 740 + j * 115, x, { size: 60 }), .3 + j * .18));
+  add(7, 'pop', T(780, 760, '1ᵉʳ match', { size: 60 }), W(7, 'premier'));
+  add(7, 'pop', T(780, 840, 'officiel', { size: 60 }), W(7, 'officiel'));
+  add(7, 'pop', T(780, 1000, '…c\'est tout', { size: 52, font: 'Kalam' }), W(7, 'Barça'));
+
+  // 8 — counterpoint (dark red background)
+  add(8, 'pop', T(540, 520, 'MAIS ATTENTION ⚠️', { size: 100, fill: RED }), .05);
+  add(8, 'draw', G(circ(540, 700, 130, { strokeWidth: 7 }), line(540, 765, 540, 1060, { strokeWidth: 8 }), line(540, 830, 420, 960, { strokeWidth: 7 }), line(540, 830, 660, 960, { strokeWidth: 7 }),
+                   line(540, 1060, 450, 1260, { strokeWidth: 8 }), line(540, 1060, 630, 1260, { strokeWidth: 8 })), .2, .6);
+  add(8, 'pop', circ(540, 1060, 150, { stroke: RED, strokeWidth: 10, fill: 'rgba(255,107,107,.35)', fillStyle: 'solid' }), W(8, 'pubalgie'));
+  add(8, 'pop', T(800, 1080, 'PUBALGIE', { size: 64, fill: RED, rot: -8 }), W(8, 'pubalgie'));
+  add(8, 'pop', T(540, 1380, 'plusieurs matchs manqués en 2025', { size: 48, font: 'Kalam' }), W(8, 'matchs'));
+
+  // 9 — punchline over another real photo
+  BROLL.push({ scene: 9, src: 'real/yamal-argentine.jpg', alt: 'real/yamal-france-b.jpg', z0: 1.0, z1: 1.18, x0: -20, x1: 20, dim: .55, credit: 'Photo : Bryan Berlin, CC BY-SA 4.0, Wikimedia Commons' });
+  add(9, 'pop', T(540, 560, 'LE « NOUVEAU MESSI » ?', { size: 84, stroke: DARK, sw: 12 }), W(9, 'nouveau') - .4);
+  add(9, 'draw', line(150, 540, 930, 545, { stroke: RED, strokeWidth: 14, roughness: 1 }), W(9, 'Messi'), .3);
+  add(9, 'pop', T(540, 1240, 'LAMINE YAMAL.', { size: 150, fill: YEL, stroke: DARK, sw: 16, rot: -4 }), W(9, 'Messi') + .3);
+
+  // 10 — subscribe
+  add(10, 'draw', rect(170, 700, 740, 190, { fill: GAR, fillStyle: 'solid', strokeWidth: 8 }), 0, .4);
+  add(10, 'pop', T(540, 828, '🔔 ABONNE-TOI', { size: 84, fill: '#fff' }), .2);
+  add(10, 'pop', T(540, 1040, 'des stats qui retournent le cerveau 🤯', { size: 54, font: 'Kalam' }), W(10, 'stats'));
+
+  STEPS.forEach(s => CUES.push({ t: s.t, fx: 'roar' }));
+  window.CUES = CUES.sort((a, b) => a.t - b.t);
+}
+
+function render(t) {
+  const L = TL.lines;
+  let idx = 0; L.forEach((l, i) => { if (t >= l.start - 0.15) idx = i; });
+  const ln = L[idx], lt = t - ln.start, speaking = t >= ln.start && t <= ln.end;
+  document.getElementById('progress').style.width = `${(1036 * clamp(t / TL.total)).toFixed(1)}px`;
+
+  let punch = 1;
+  for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < .2) punch += .02 * (1 - d / .2); }
+  HUD.setAttribute('transform', `translate(540 900) scale(${punch * (1 + .012 * Math.sin(t * .8))}) translate(-540 -900)`);
+  for (const it of ITEMS) {
+    const st = t - L[it.scene].start - it.at;
+    if (idx !== it.scene || st < 0) { it.node.style.display = 'none'; continue; }
+    it.node.style.display = '';
+    if (it.kind === 'draw') { const p = easeOut(st / it.dur); it.paths.forEach(({ p: el, L: len }) => { el.style.strokeDashoffset = len * (1 - p); }); }
+    else { it.node.style.transform = `scale(${Math.max(easeBack(st / .32), .01)})`; it.node.style.opacity = clamp(st / .1); }
+  }
+  // scene background colour
+  const bg = document.getElementById('bgcol');
+  if (BGCOL[idx]) { bg.style.background = BGCOL[idx]; bg.style.opacity = clamp(lt / .2); } else bg.style.opacity = 0;
+
+  // exploits counter + age
+  let step = null; for (const s of STEPS) if (t >= s.t) step = s;
+  const hb = document.getElementById('hudbar'); hb.style.display = idx >= 1 && idx <= 6 ? 'flex' : 'none';
+  document.getElementById('hbCount').innerHTML = `EXPLOITS <b>${step ? step.count : 0}</b>`;
+  document.getElementById('hbAge').innerHTML = `ÂGE <b>${(step ? step.age : '15 ans').replace(' ans', '')}</b> ans`;
+  const sd = step ? t - step.t : 9;
+  document.getElementById('hbCount').style.transform = `scale(${sd < .4 ? 1 + .2 * Math.sin(Math.PI * sd / .4) : 1})`;
+  document.getElementById('flash').style.opacity = sd < .25 ? (.35 * (1 - sd / .25)).toFixed(3) : 0;
+
+  // photo layer
+  let br = null; for (const b of BROLL) if (b.scene === idx) br = b;
+  const brDiv = document.getElementById('broll'), img = document.getElementById('brimg'), cr = document.getElementById('credit');
+  brDiv.style.display = br ? 'block' : 'none'; cr.style.display = br ? 'block' : 'none';
+  let pending = null;
+  if (br) {
+    cr.textContent = br.credit;
+    const k = clamp(lt / (ln.end - ln.start + .3));
+    if (img.dataset.want !== br.src) { img.dataset.want = br.src; img.setAttribute('src', br.src);
+      pending = img.decode().catch(() => { if (br.alt) { img.setAttribute('src', br.alt); return img.decode().catch(() => {}); } }); }
+    img.style.transform = `translate(${lerp(br.x0 || 0, br.x1 || 0, k)}px, 0) scale(${lerp(br.z0, br.z1, k)})`;
+    img.style.filter = `brightness(${br.dim + Math.max(0, 1 - lt / .12) * .8}) contrast(1.1) saturate(1.15)`;
+  }
+  // captions
+  const ws = words(idx), wt = ws.map(w => w.length + 2), sum = wt.reduce((a, b) => a + b, 0);
+  const pp = clamp(lt / (ln.end - ln.start)) * sum; let acc = 0, cur = ws.length - 1;
+  for (let i = 0; i < ws.length; i++) { acc += wt[i]; if (pp < acc) { cur = i; break; } }
+  const c0 = Math.floor(cur / 2) * 2, cap = document.getElementById('caption');
+  cap.innerHTML = ws.slice(c0, c0 + 2).map((w, i) => `<span class="${c0 + i === cur && speaking ? 'on' : ''}">${w.toUpperCase()}</span>`).join(' ');
+  cap.style.opacity = (t < ln.start - .15 || t > ln.end + .25) ? 0 : 1;
+  return pending;
+}
+window.init = async tl => { TL = tl; await document.fonts.ready; build(); return window.CUES; };
+window.render = render;
+</script>
+</body>
+</html>
